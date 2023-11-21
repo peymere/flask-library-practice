@@ -6,6 +6,7 @@ from sqlalchemy.sql.expression import bindparam
 from sqlalchemy_serializer import SerializerMixin
 from datetime import timedelta, datetime
 
+
 def next_week():
     return datetime.utcnow() + timedelta(days=7)
 
@@ -14,6 +15,7 @@ metadata = MetaData(naming_convention={
 })
 
 db = SQLAlchemy(metadata=metadata)
+
 
 class Book(db.Model, SerializerMixin):
     __tablename__ = 'books'
@@ -24,8 +26,16 @@ class Book(db.Model, SerializerMixin):
     number_of_pages = db.Column(db.Integer)
 
     # add relationship
-
+    loans = db.relationship('Loan', back_populates='book', cascade='all, delete-orphan')
+    members = association_proxy('loans', 'member')
     # add serialization rules
+    serialize_rules = ('-loans.book',)
+
+    @validates('number_of_pages')
+    def validates_pages(self, key, page_num):
+        if page_num < 1:
+            raise ValueError("Book must have at least 1 page")
+        return page_num
 
     def __repr__(self):
         return f'<Book {self.id} {self.title} {self.author} {self.number_or_pages}>'
@@ -39,8 +49,10 @@ class Member(db.Model, SerializerMixin):
     year_joined = db.Column(db.String)
 
     # add relationship
-    
+    loans = db.relationship('Loan', back_populates='member', cascade='all, delete-orphan')
+    books= association_proxy('loans', 'book')
     # add serialization rules
+    serialize_rules = ('-loans.member',)
 
     def __repr__(self):
         return f'<Member {self.id} {self.name} {self.year_joined}>'
@@ -52,10 +64,15 @@ class Loan(db.Model, SerializerMixin):
     id = db.Column(db.Integer, primary_key=True)
     check_out_date = db.Column(db.DateTime, server_default=db.func.now())
     due_date = db.Column(db.DateTime, default=next_week)
+    member_id = db.Column(db.Integer, db.ForeignKey('members.id'))
+    book_id = db.Column(db.Integer, db.ForeignKey('books.id'))
 
     # add relationship
+    member = db.relationship('Member', back_populates='loans')
+    book = db.relationship('Book', back_populates='loans')
 
     # add serialization rules
+    serialize_rules = ('-book.loans', '-member.loans',)
 
     def __repr__(self):
         return f'<Loan {self.id} {self.check_out_date} {self.due_date}>'
